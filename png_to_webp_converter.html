@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PNG → WebP 변환기</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0d1b0d 0%, #1a2e1a 50%, #0f2b0f 100%);
+            min-height: 100vh;
+            color: #e8f5e8;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* 배경 애니메이션 효과 */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle at 20% 80%, rgba(64, 128, 64, 0.2) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(32, 96, 64, 0.25) 0%, transparent 50%),
+                        radial-gradient(circle at 40% 40%, rgba(48, 112, 80, 0.15) 0%, transparent 50%);
+            animation: backgroundShift 8s ease-in-out infinite alternate;
+            pointer-events: none;
+            z-index: -1;
+        }
+
+        @keyframes backgroundShift {
+            0% { transform: scale(1) rotate(0deg); }
+            100% { transform: scale(1.1) rotate(2deg); }
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding-top: 40px;
+        }
+
+        .header h1 {
+            font-size: clamp(2rem, 5vw, 3.5rem);
+            font-weight: 800;
+            background: linear-gradient(135deg, #4ade80, #22c55e, #16a34a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 10px;
+            text-shadow: 0 0 30px rgba(74, 222, 128, 0.3);
+            animation: titleGlow 3s ease-in-out infinite alternate;
+        }
+
+        @keyframes titleGlow {
+            0% { filter: brightness(1); }
+            100% { filter: brightness(1.2); }
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.8;
+            margin-bottom: 20px;
+        }
+
+        /* 글래스모피즘 카드 */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            padding: 40px;
+            margin-bottom: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.15);
+            position: relative;
+            overflow: hidden;
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+            transition: left 0.6s;
+        }
+
+        .glass-card:hover::before {
+            left: 100%;
+        }
+
+        .glass-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+        }
+
+        /* 드래그 앤 드롭 영역 */
+        .drop-zone {
+            border: 2px dashed rgba(255, 255, 255, 0.2);
+            border-radius: 16px;
+            padding: 60px 20px;
+            text-align: center;
+            background: rgba(255, 255, 255, 0.03);
+            transition: all 0.3s ease;
+            position: relative;
+            margin-bottom: 30px;
+        }
+
+        .drop-zone.dragover {
+            border-color: #4ade80;
+            background: rgba(74, 222, 128, 0.1);
+            box-shadow: 0 0 30px rgba(74, 222, 128, 0.2);
+            transform: scale(1.02);
+        }
+
+        .drop-zone-content {
+            pointer-events: none;
+        }
+
+        .drop-zone h3 {
+            font-size: 1.5rem;
+            margin-bottom: 15px;
+            color: #4ade80;
+        }
+
+        .drop-zone p {
+            opacity: 0.7;
+            margin-bottom: 20px;
+        }
+
+        /* 파일 입력 버튼 */
+        .file-input-wrapper {
+            position: relative;
+            display: inline-block;
+        }
+
+        .file-input {
+            position: absolute;
+            opacity: 0;
+            width: 100%;
+            height: 100%;
+            cursor: pointer;
+        }
+
+        .file-input-btn {
+            background: linear-gradient(135deg, #22c55e, #16a34a);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 20px rgba(34, 197, 94, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .file-input-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+            transition: left 0.5s;
+        }
+
+        .file-input-btn:hover::before {
+            left: 100%;
+        }
+
+        .file-input-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px rgba(34, 197, 94, 0.4);
+        }
+
+        /* 업로드된 파일 미리보기 */
+        .file-preview {
+            display: none;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            margin-bottom: 15px;
+        }
+
+        .file-info {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        /* 품질 설정 */
+        .quality-settings {
+            margin-bottom: 30px;
+        }
+
+        .quality-settings h4 {
+            margin-bottom: 15px;
+            color: #4ade80;
+        }
+
+        .quality-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: rgba(255, 255, 255, 0.2);
+            outline: none;
+            -webkit-appearance: none;
+            margin-bottom: 10px;
+        }
+
+        .quality-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(74, 222, 128, 0.4);
+        }
+
+        .quality-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #4ade80, #22c55e);
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 10px rgba(74, 222, 128, 0.4);
+        }
+
+        .quality-value {
+            text-align: center;
+            font-weight: 600;
+            color: #4ade80;
+        }
+
+        /* 변환 버튼 */
+        .convert-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #059669, #065f46);
+            color: white;
+            padding: 18px;
+            border-radius: 50px;
+            border: none;
+            font-size: 1.1rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 15px 30px rgba(5, 150, 105, 0.25);
+            position: relative;
+            overflow: hidden;
+            margin-bottom: 30px;
+        }
+
+        .convert-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .convert-btn:hover:not(:disabled) {
+            transform: translateY(-3px);
+            box-shadow: 0 20px 40px rgba(5, 150, 105, 0.35);
+        }
+
+        /* 로딩 애니메이션 */
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+
+        .loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(255, 255, 255, 0.2);
+            border-top: 3px solid #4ade80;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* 결과 영역 */
+        .result {
+            display: none;
+            text-align: center;
+        }
+
+        .download-btn {
+            background: linear-gradient(135deg, #16a34a, #15803d);
+            color: white;
+            padding: 15px 30px;
+            border-radius: 50px;
+            border: none;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 10px 20px rgba(22, 163, 74, 0.3);
+            text-decoration: none;
+            display: inline-block;
+            margin: 10px;
+        }
+
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 30px rgba(22, 163, 74, 0.4);
+        }
+
+        /* 반응형 디자인 */
+        @media (max-width: 768px) {
+            .container {
+                padding: 15px;
+            }
+            
+            .glass-card {
+                padding: 25px;
+                margin-bottom: 20px;
+            }
+            
+            .drop-zone {
+                padding: 40px 15px;
+            }
+            
+            .header {
+                margin-bottom: 30px;
+                padding-top: 20px;
+            }
+        }
+
+        /* 성공 메시지 */
+        .success-message {
+            background: rgba(34, 197, 94, 0.1);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 20px;
+            color: #4ade80;
+            text-align: center;
+        }
+
+        /* 파일 크기 비교 */
+        .size-comparison {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .size-info {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 15px;
+            border-radius: 12px;
+            text-align: center;
+        }
+
+        .size-info h5 {
+            margin-bottom: 10px;
+            opacity: 0.8;
+        }
+
+        .size-info .size {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #4ade80;
+        }
+
+        .size-info.webp .size {
+            color: #22c55e;
+        }
+
+        /* 변환된 이미지 미리보기 */
+        .converted-images {
+            margin: 30px 0;
+        }
+
+        .converted-image-item {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .converted-image {
+            max-width: 100%;
+            max-height: 300px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            margin-bottom: 15px;
+        }
+
+        .converted-info {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 15px;
+            border-radius: 12px;
+            margin-bottom: 15px;
+        }
+
+        .converted-info h5 {
+            color: #4ade80;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .download-instruction {
+            color: #22c55e;
+            font-weight: 600;
+            background: rgba(34, 197, 94, 0.1);
+            padding: 10px 15px;
+            border-radius: 8px;
+            border: 1px solid rgba(34, 197, 94, 0.2);
+            display: inline-block;
+            margin: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .download-instruction:hover {
+            background: rgba(34, 197, 94, 0.15);
+            transform: translateY(-1px);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>PNG → WebP 변환기</h1>
+            <p>이미지를 더 작고 빠르게 만들어보세요</p>
+        </div>
+
+        <div class="glass-card">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-zone-content">
+                    <h3>📁 파일을 여기에 드래그하세요</h3>
+                    <p>또는 아래 버튼을 클릭해서 파일을 선택하세요</p>
+                    <div class="file-input-wrapper">
+                        <input type="file" class="file-input" id="fileInput" accept="image/png" multiple>
+                        <button class="file-input-btn">파일 선택하기</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="file-preview" id="filePreview">
+                <img class="preview-image" id="previewImage" alt="미리보기">
+                <div class="file-info" id="fileInfo"></div>
+            </div>
+
+            <div class="quality-settings">
+                <h4>품질 설정</h4>
+                <input type="range" class="quality-slider" id="qualitySlider" min="10" max="100" value="80">
+                <div class="quality-value" id="qualityValue">품질: 80%</div>
+            </div>
+
+            <button class="convert-btn" id="convertBtn" disabled>WebP로 변환하기</button>
+
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <p>변환 중입니다...</p>
+            </div>
+
+            <div class="result" id="result">
+                <div class="success-message">
+                    ✅ 변환이 완료되었습니다!
+                </div>
+                <div class="size-comparison" id="sizeComparison"></div>
+                <div class="converted-images" id="convertedImages"></div>
+                <div id="downloadLinks"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class PNGToWebPConverter {
+            constructor() {
+                this.files = [];
+                this.quality = 0.8;
+                this.initializeElements();
+                this.bindEvents();
+            }
+
+            initializeElements() {
+                this.dropZone = document.getElementById('dropZone');
+                this.fileInput = document.getElementById('fileInput');
+                this.filePreview = document.getElementById('filePreview');
+                this.previewImage = document.getElementById('previewImage');
+                this.fileInfo = document.getElementById('fileInfo');
+                this.qualitySlider = document.getElementById('qualitySlider');
+                this.qualityValue = document.getElementById('qualityValue');
+                this.convertBtn = document.getElementById('convertBtn');
+                this.loading = document.getElementById('loading');
+                this.result = document.getElementById('result');
+                this.sizeComparison = document.getElementById('sizeComparison');
+                this.convertedImages = document.getElementById('convertedImages');
+                this.downloadLinks = document.getElementById('downloadLinks');
+            }
+
+            bindEvents() {
+                // 드래그 앤 드롭 이벤트
+                this.dropZone.addEventListener('dragover', this.handleDragOver.bind(this));
+                this.dropZone.addEventListener('dragleave', this.handleDragLeave.bind(this));
+                this.dropZone.addEventListener('drop', this.handleDrop.bind(this));
+
+                // 파일 입력 이벤트
+                this.fileInput.addEventListener('change', this.handleFileSelect.bind(this));
+
+                // 품질 슬라이더 이벤트
+                this.qualitySlider.addEventListener('input', this.handleQualityChange.bind(this));
+
+                // 변환 버튼 이벤트
+                this.convertBtn.addEventListener('click', this.convertFiles.bind(this));
+            }
+
+            handleDragOver(e) {
+                e.preventDefault();
+                this.dropZone.classList.add('dragover');
+            }
+
+            handleDragLeave() {
+                this.dropZone.classList.remove('dragover');
+            }
+
+            handleDrop(e) {
+                e.preventDefault();
+                this.dropZone.classList.remove('dragover');
+                const files = Array.from(e.dataTransfer.files).filter(file => file.type === 'image/png');
+                this.processFiles(files);
+            }
+
+            handleFileSelect(e) {
+                const files = Array.from(e.target.files);
+                this.processFiles(files);
+            }
+
+            processFiles(files) {
+                if (files.length === 0) {
+                    alert('PNG 파일만 선택해주세요.');
+                    return;
+                }
+
+                this.files = files;
+                this.showPreview(files[0]);
+                this.convertBtn.disabled = false;
+            }
+
+            showPreview(file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    this.previewImage.src = e.target.result;
+                    this.filePreview.style.display = 'block';
+                    
+                    const sizeKB = (file.size / 1024).toFixed(2);
+                    const fileCount = this.files.length > 1 ? ` (총 ${this.files.length}개 파일)` : '';
+                    this.fileInfo.innerHTML = `
+                        <strong>${file.name}</strong>${fileCount}<br>
+                        크기: ${sizeKB} KB
+                    `;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            handleQualityChange(e) {
+                this.quality = e.target.value / 100;
+                this.qualityValue.textContent = `품질: ${e.target.value}%`;
+            }
+
+            async convertFiles() {
+                this.showLoading(true);
+                this.result.style.display = 'none';
+
+                try {
+                    const convertedFiles = [];
+                    let totalOriginalSize = 0;
+                    let totalWebpSize = 0;
+
+                    for (const file of this.files) {
+                        const webpData = await this.convertToWebP(file);
+                        convertedFiles.push({
+                            name: file.name.replace('.png', '.webp'),
+                            data: webpData,
+                            originalSize: file.size,
+                            webpSize: webpData.size
+                        });
+                        totalOriginalSize += file.size;
+                        totalWebpSize += webpData.size;
+                    }
+
+                    this.showResults(convertedFiles, totalOriginalSize, totalWebpSize);
+                } catch (error) {
+                    alert('변환 중 오류가 발생했습니다: ' + error.message);
+                } finally {
+                    this.showLoading(false);
+                }
+            }
+
+            convertToWebP(file) {
+                return new Promise((resolve, reject) => {
+                    const canvas = document.createElement('canvas');
+                    const ctx = canvas.getContext('2d');
+                    const img = new Image();
+
+                    img.onload = () => {
+                        canvas.width = img.width;
+                        canvas.height = img.height;
+                        ctx.drawImage(img, 0, 0);
+
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                resolve(blob);
+                            } else {
+                                reject(new Error('변환에 실패했습니다.'));
+                            }
+                        }, 'image/webp', this.quality);
+                    };
+
+                    img.onerror = () => reject(new Error('이미지를 로드할 수 없습니다.'));
+                    img.src = URL.createObjectURL(file);
+                });
+            }
+
+            showResults(convertedFiles, originalSize, webpSize) {
+                const savings = ((originalSize - webpSize) / originalSize * 100).toFixed(1);
+                
+                // 크기 비교 표시
+                this.sizeComparison.innerHTML = `
+                    <div class="size-info">
+                        <h5>원본 PNG</h5>
+                        <div class="size">${(originalSize / 1024).toFixed(2)} KB</div>
+                    </div>
+                    <div class="size-info webp">
+                        <h5>변환된 WebP</h5>
+                        <div class="size">${(webpSize / 1024).toFixed(2)} KB</div>
+                    </div>
+                `;
+
+                // 변환된 이미지들 표시
+                this.convertedImages.innerHTML = '';
+                convertedFiles.forEach(file => {
+                    const imageUrl = URL.createObjectURL(file.data);
+                    const imageItem = document.createElement('div');
+                    imageItem.className = 'converted-image-item';
+                    imageItem.innerHTML = `
+                        <img class="converted-image" src="${imageUrl}" alt="${file.name}">
+                        <div class="converted-info">
+                            <h5>${file.name}</h5>
+                            <p>크기: ${(file.webpSize / 1024).toFixed(2)} KB</p>
+                        </div>
+                        <div class="download-instruction" onclick="this.nextElementSibling.click()">
+                            우클릭해서 '다른 이름으로 저장'하면 됩니다
+                        </div>
+                        <img src="${imageUrl}" style="display: none;" download="${file.name}">
+                    `;
+                    this.convertedImages.appendChild(imageItem);
+                });
+
+                // 다운로드 안내
+                this.downloadLinks.innerHTML = `
+                    <p style="margin-bottom: 20px; text-align: center;">
+                        <strong>${savings}% 용량 절약!</strong><br>
+                        <span style="opacity: 0.8; font-size: 0.9rem;">변환된 이미지를 우클릭하여 저장하세요</span>
+                    </p>
+                `;
+
+                this.result.style.display = 'block';
+            }
+
+            showLoading(show) {
+                this.loading.style.display = show ? 'block' : 'none';
+                this.convertBtn.disabled = show;
+            }
+        }
+
+        // 앱 초기화
+        document.addEventListener('DOMContentLoaded', () => {
+            new PNGToWebPConverter();
+        });
+    </script>
+</body>
+</html>
